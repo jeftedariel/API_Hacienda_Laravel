@@ -9,7 +9,7 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.2",
+        "php": "^8.4",
         "crlibre/xades-xmlseclibs": "@dev",
         "dedoc/scramble": "^0.13.30",
         "laravel/framework": "^12.0",
