@@ -66,6 +66,11 @@ Route::prefix('v1')->group(function () {
         Route::get('documents', [DocumentController::class, 'index']);
         Route::get('documents/{document}', [DocumentController::class, 'show']);
         Route::get('documents/{document}/status', [DocumentController::class, 'status']);
+
+        // Consulta de estado por clave: sirve para comprobantes que esta
+        // instalación no emitió (los que RECIBE la empresa de terceros).
+        Route::middleware('throttle:60,1')
+            ->get('hacienda/status', [DocumentController::class, 'statusByClave']);
         Route::middleware('throttle:60,1')->post('documents', [DocumentController::class, 'store']);
     });
 });
