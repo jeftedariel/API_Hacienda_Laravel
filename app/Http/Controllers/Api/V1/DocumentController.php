@@ -105,6 +105,66 @@ class DocumentController extends Controller
         abort_if($company === null || $document->company_id !== $company->id, 403, 'No autorizado.');
     }
 
+    /**
+     * Estado en Hacienda de CUALQUIER comprobante, dado su clave.
+     *
+     * A diferencia de status(), no exige que el comprobante exista acá:
+     * un receptor necesita poder verificar lo que le emitió su proveedor,
+     * y Hacienda responde la consulta a cualquier contribuyente con token
+     * válido. Se usan las credenciales ATV de la empresa autenticada.
+     *
+     * Sin `environment` se usa producción si la empresa tiene esas
+     * credenciales; si no, las de staging.
+     */
+    public function statusByClave(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'clave' => ['required', 'string', 'regex:/^\d{50}$/'],
+            'environment' => ['nullable', 'in:prod,stag'],
+        ], [
+            'clave.regex' => 'La clave debe tener exactamente 50 dígitos.',
+        ]);
+
+        $company = ActingCompany::for($request->user());
+        abort_if($company === null, 403, 'Sin empresa asociada.');
+
+        $environment = $data['environment'] ?? null;
+
+        $credential = $company->credentials()
+            ->when($environment !== null, fn ($q) => $q->where('environment', $environment))
+            ->orderByRaw("case when environment = 'prod' then 0 else 1 end")
+            ->first();
+
+        abort_if($credential === null, 422, 'Sin credenciales para consultar.');
+
+        $clientId = $credential->environment === 'prod' ? 'api-prod' : 'api-stag';
+        $token = $this->tokenFor($credential, $clientId);
+
+        abort_if($token === null, 422, 'Las credenciales guardadas no autenticaron contra Hacienda.');
+
+        $result = $this->status->consultar($data['clave'], $clientId, $token);
+
+        // consultar() devuelve string ante un error de configuración y un
+        // arreglo con Status 0 si no se pudo hablar con Hacienda: ninguno
+        // de los dos es un estado del comprobante.
+        if (is_string($result)) {
+            abort(502, $result);
+        }
+
+        if (is_array($result)) {
+            abort(502, (string) ($result['text'] ?? 'No se pudo consultar Hacienda.'));
+        }
+
+        // Body vacío o no-JSON: Hacienda no tiene esa clave registrada.
+        abort_if($result === null, 404, 'Hacienda no tiene información para esa clave.');
+
+        return response()->json([
+            'clave' => $data['clave'],
+            'environment' => $credential->environment,
+            'hacienda' => $result,
+        ]);
+    }
+
     private function tokenFor($credential, string $clientId): ?string
     {
         $response = app(TokenService::class)->requestToken([
