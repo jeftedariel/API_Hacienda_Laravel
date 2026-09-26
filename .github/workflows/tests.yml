@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        php: ['8.2', '8.3', '8.4']
+        # El composer.lock fija symfony con `php >=8.4.1`, así que en 8.2
+        # y 8.3 `composer install` falla antes de correr un solo test.
+        # El runtime real también es 8.4 (docker-compose usa php:8.4-cli).
+        php: ['8.4', '8.5']
 
     steps:
       - name: Checkout
